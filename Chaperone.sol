@@ -1,71 +1,73 @@
-pragma solidity 0.4.18;
+pragma solidity 0.5.8;
 
 import {SafeMath} from "./SafeMath.sol";
 
+
 contract Chaperone {
-  using SafeMath for uint;
+    using SafeMath for uint;
 
-  uint public waitingPeriodInSeconds;
-  address public chaperone;
-  
-  mapping (address => uint) pending;
-  mapping (address => bool) owners;
+    uint public waitingPeriodInSeconds;
+    address public chaperone;
+    
+    mapping (address => uint) pending;
+    mapping (address => bool) owners;
 
-  event SubmitOwnerEvent(address indexed newOwner, uint indexed pendingComplete);
-  event RejectOwnerEvent(address indexed rejectedOwner, uint indexed rejectedTimestamp);
-  event ApproveOwnerEvent(address indexed approvedOwner, uint indexed approvedTimestamp);
-  event ExecuteEvent(address indexed owner, address indexed destination, uint indexed value, bytes data);
+    event SubmitOwnerEvent(address indexed newOwner, uint indexed pendingComplete);
+    event RejectOwnerEvent(address indexed rejectedOwner, uint indexed rejectedTimestamp);
+    event ApproveOwnerEvent(address indexed approvedOwner, uint indexed approvedTimestamp);
+    event ExecuteEvent(address indexed owner, address indexed destination, uint indexed value, bytes data);
 
-  modifier isOwner {
-      assert(owners[msg.sender] == true);
-      _;
-  }
+    modifier isOwner {
+        assert(owners[msg.sender] == true);
+        _;
+    }
 
-  modifier isChaperone {
-      assert(chaperone == msg.sender);
-      _;
-  }
+    modifier isChaperone {
+        assert(chaperone == msg.sender);
+        _;
+    }
 
-  function Chaperone(address _owner, address _chaperone, uint _waitingPeriodInSeconds) public {
-    require(_owner != address(0));
-    require(_chaperone != address(0));
-    require(_waitingPeriodInSeconds != 0);
+    constructor(address _owner, address _chaperone, uint _waitingPeriodInSeconds) public {
+        require(_owner != address(0), "owner-not-zero");
+        require(_chaperone != address(0), "chaperone-not-zero");
+        require(_waitingPeriodInSeconds != 0, "waiting-period-not-zero");
 
-    owners[_owner] = true;
-    chaperone = _chaperone;
-    waitingPeriodInSeconds = _waitingPeriodInSeconds;
-  }
+        owners[_owner] = true;
+        chaperone = _chaperone;
+        waitingPeriodInSeconds = _waitingPeriodInSeconds;
+    }
 
-  function submitOwner(address _pending) isChaperone public {
-      require(owners[_pending] == false);
-      require(pending[_pending] == 0);
+    function () external payable {}
 
-      uint pendingComplete = waitingPeriodInSeconds.add(block.timestamp);
-      pending[_pending] = pendingComplete;
-      
-      SubmitOwnerEvent(_pending, pendingComplete);
-  }
+    function submitOwner(address _pending) public isChaperone {
+        require(owners[_pending] == false, "owner-must-be-false");
+        require(pending[_pending] == 0, "pending-must-be-zero");
 
-  function rejectOwner(address _pending) isOwner public {      
-      pending[_pending] = 0;
-      
-      RejectOwnerEvent(_pending, block.timestamp);
-  }
+        uint pendingComplete = waitingPeriodInSeconds.add(block.timestamp);
+        pending[_pending] = pendingComplete;
+        
+        emit SubmitOwnerEvent(_pending, pendingComplete);
+    }
 
-  function approveOwner(address _pending) isChaperone public {
-      require(pending[_pending] != 0);
-      require(pending[_pending] < waitingPeriodInSeconds.add(block.timestamp));
-      
-      owners[_pending] = true;
-      
-      ApproveOwnerEvent(_pending, block.timestamp);
-  }
-  
-  function execute(address destination, uint value, bytes data) isOwner public {
-    require(destination.call.value(value)(data));
+    function rejectOwner(address _pending) public isOwner {      
+        pending[_pending] = 0;
+        
+        emit RejectOwnerEvent(_pending, block.timestamp);
+    }
 
-    ExecuteEvent(msg.sender, destination, value, data);
-  }
+    function approveOwner(address _pending) public isChaperone {
+        require(pending[_pending] != 0, "pending-not-zero");
+        require(pending[_pending] < waitingPeriodInSeconds.add(block.timestamp), "waitingPeriod-must-be-passed");
+        
+        owners[_pending] = true;
+        
+        emit ApproveOwnerEvent(_pending, block.timestamp);
+    }
+    
+    function execute(address destination, uint value, bytes memory data) public isOwner {
+        (bool success, ) = destination.call.value(value)(data);
+        require(success, "call-must-succeed");
 
-  function () public payable {}
+        emit ExecuteEvent(msg.sender, destination, value, data);
+    }
 }
