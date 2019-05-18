@@ -22,8 +22,8 @@ contract Chaperone {
         _;
     }
 
-    modifier isChaperone {
-        assert(chaperone == msg.sender);
+    modifier isOwnerOrChaperone {
+        assert(owners[msg.sender] == true || chaperone == msg.sender);
         _;
     }
 
@@ -39,7 +39,7 @@ contract Chaperone {
 
     function () external payable {}
 
-    function submitOwner(address _pending) public isChaperone {
+    function submitOwner(address _pending) public isOwnerOrChaperone {
         require(owners[_pending] == false, "owner-must-be-false");
         require(pending[_pending] == 0, "pending-must-be-zero");
 
@@ -55,7 +55,7 @@ contract Chaperone {
         emit RejectOwnerEvent(_pending, block.timestamp);
     }
 
-    function approveOwner(address _pending) public isChaperone {
+    function approveOwner(address _pending) public isOwnerOrChaperone {
         require(pending[_pending] != 0, "pending-not-zero");
         require(pending[_pending] < waitingPeriodInSeconds.add(block.timestamp), "waitingPeriod-must-be-passed");
         
